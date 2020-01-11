@@ -31,10 +31,9 @@ Model::Model(string const &path) {
     loadModel(path);
 }
 
-void Model::render(shared_ptr<Shader> shader0, int instances,
-                   GLuint const overrideTexture) const {
+void Model::render(shared_ptr<Shader> shader0) const {
     for (auto const &mesh : meshes) {
-        mesh.render(shader0, instances, overrideTexture);
+        mesh.render(shader0);
     }
 }
 

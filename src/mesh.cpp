@@ -16,8 +16,7 @@ Mesh::Mesh(vector<Vertex> const &vertices,
           textures(textures) {
 }
 
-void Mesh::render(shared_ptr<Shader> shader, int instances,
-                  GLuint const overrideTexture) const {
+void Mesh::render(shared_ptr<Shader> shader) const {
     shader->use();
     shader->uniform1i("texAo", 0);
     shader->uniform1i("texAlbedo", 1);
@@ -25,7 +24,7 @@ void Mesh::render(shared_ptr<Shader> shader, int instances,
     shader->uniform1i("texRoughness", 3);
     shader->uniform1i("texNormal", 4);
 
-    shader->uniform1i("instances", instances);
+    shader->uniform1i("instances", 1);
 
     for (int i = 0; i < textures.size(); ++i) {
         glActiveTexture(GL_TEXTURE0 + i);
@@ -34,7 +33,7 @@ void Mesh::render(shared_ptr<Shader> shader, int instances,
 
     glBindVertexArray(vao);
         glDrawElementsInstanced(GL_TRIANGLES, indices.size(),
-                       GL_UNSIGNED_INT, nullptr, instances);
+                       GL_UNSIGNED_INT, nullptr, 1);
     glBindVertexArray(0);
     glBindTexture(GL_TEXTURE_2D, 0);
 }

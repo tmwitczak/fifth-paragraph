@@ -9,8 +9,7 @@ class Renderable {
 public:
     std::shared_ptr<Shader> shader;
 
-    virtual void render(std::shared_ptr<Shader> shader, int instances,
-                        GLuint const overrideTexture) const = 0;
+    virtual void render(std::shared_ptr<Shader> shader) const = 0;
     virtual ~Renderable() {}
 };
 

@@ -33,8 +33,7 @@ public:
 
     ~Mesh();
 
-    void render(std::shared_ptr<Shader> shader, int instances = 1,
-                GLuint const overrideTexture = 0) const;
+    void render(std::shared_ptr<Shader> shader) const;
 
 public:
     void setupMesh();

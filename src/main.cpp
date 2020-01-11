@@ -1,5 +1,6 @@
 // //////////////////////////////////////////////////////////// Includes //
 #include "model.hpp"
+#include "skybox.hpp"
 #include "opengl-headers.hpp"
 #include "shader.hpp"
 
@@ -18,6 +19,7 @@ using sec = std::chrono::duration<float>;
 
 // ////////////////////////////////////////////////////////////// Usings //
 using glm::cross;
+using glm::mat3;
 using glm::mat4;
 using glm::normalize;
 using glm::perspective;
@@ -191,15 +193,19 @@ struct GraphNode {
     vector<int> instances;
     vector<vec3> offset;
     GLuint overrideTexture;
+    int iSkybox;
 
     GraphNode() : overrideTexture(0) {}
 
-    void render(mat4 const &vp = mat4(1.0f)) {
+    void render(mat4 const &vp, mat4 const &projection, mat4 const &view) {
         for (int i = 0; i < model.size(); i++) {
             mat4 renderTransform = vp * transform[i];
 
             if (model[i]) {
                 model[i]->shader->use();
+                if (i == iSkybox) {
+                    renderTransform = projection * mat4(mat3(view)) * transform[i];
+                }
                 model[i]->shader->uniformMatrix4fv("transform",
                                                    value_ptr(
                                                        renderTransform));
@@ -216,7 +222,7 @@ struct GraphNode {
                 lightSpot1.setShaderParameters(model[i]->shader);
                 lightSpot2.setShaderParameters(model[i]->shader);
 
-                model[i]->render(model[i]->shader, instances[i], overrideTexture);
+                model[i]->render(model[i]->shader);
             }
         }
     }
@@ -225,14 +231,14 @@ struct GraphNode {
 // /////////////////////////////////////////////////////////// Constants //
 int const WINDOW_WIDTH = 1589;
 int const WINDOW_HEIGHT = 982;
-char const *WINDOW_TITLE = "Tomasz Witczak 216920 - Zadanie 4";
+char const *WINDOW_TITLE = "Tomasz Witczak 216920 - Zadanie 5";
 
 // /////////////////////////////////////////////////////////// Variables //
 // ----------------------------------------------------------- Window -- //
 GLFWwindow *window = nullptr;
 
 // ---------------------------------------------------------- Shaders -- //
-shared_ptr<Shader> modelShader, lightbulbShader;
+shared_ptr<Shader> skyboxShader, modelShader, lightbulbShader;
 
 // ----------------------------------------------------------- Camera -- //
 vec3 cameraFront(1.0f, 0.0f, 0.0f),
@@ -260,7 +266,7 @@ bool wireframeMode = false;
 bool showLightDummies = true;
 
 // ----------------------------------------------------------- Models -- //
-shared_ptr<Renderable> ground, teapot, weird, lightbulb, spotbulb;
+shared_ptr<Renderable> skybox, ground, teapot, weird, lightbulb, spotbulb;
 
 // //////////////////////////////////////////////////////////// Textures //
 GLuint loadTextureFromFile(string const &filename) {
@@ -312,6 +318,64 @@ GLuint loadTextureFromFile(string const &filename) {
 
         // After loading into OpenGL - release the raw resource
         stbi_image_free(textureData);
+    }
+
+    // Return texture's ID
+    return texture;
+}
+
+GLuint loadCubemapFromFile(vector<string> const &filenames) {
+    // Generate OpenGL resource
+    GLuint texture;
+    glGenTextures(1, &texture);
+
+    // Setup the texture
+    glBindTexture(GL_TEXTURE_CUBE_MAP, texture);
+    {
+        // Set texture parameters
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+
+        // Load texture from file
+        stbi_set_flip_vertically_on_load(false);
+
+        for (int i = 0; i < filenames.size(); ++i) {
+            int imageWidth, imageHeight, imageNumberOfChannels;
+            unsigned char *textureData = stbi_load(
+                filenames[i].c_str(),
+                &imageWidth, &imageHeight,
+                &imageNumberOfChannels, 0);
+
+            if (textureData == nullptr) {
+                throw exception("Failed to load texture!");
+            }
+
+            // Pass image to OpenGL
+            glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGB,
+                        imageWidth, imageHeight, 0,
+                        [&]() -> GLenum {
+                            switch (imageNumberOfChannels) {
+                                case 1:
+                                    return GL_RED;
+                                case 3:
+                                    return GL_RGB;
+                                case 4:
+                                    return GL_RGBA;
+                                default:
+                                    return GL_RGB;
+                            }
+                        }(),
+                        GL_UNSIGNED_BYTE, textureData);
+
+            // Generate mipmap for loaded texture
+            glGenerateMipmap(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i);
+
+            // After loading into OpenGL - release the raw resource
+            stbi_image_free(textureData);
+        }
     }
 
     // Return texture's ID
@@ -500,6 +564,12 @@ void setupSceneGraph(float const deltaTime, float const displayWidth,
     scene.instances.clear();
     scene.offset.clear();
 
+    scene.iSkybox = 0;
+    scene.transform.push_back(identity);
+    scene.model.push_back(skybox);
+    scene.instances.push_back(1);
+    scene.offset.emplace_back(0);
+
     scene.transform.push_back(identity);
     scene.model.push_back(ground);
     scene.instances.push_back(1);
@@ -624,11 +694,16 @@ void setupOpenGL() {
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
     glfwSetCursorPosCallback(window, mouseCallback);
 
+    skybox = make_shared<Skybox>();
     ground = make_shared<Model>("res/models/ground.obj");
     teapot = make_shared<Model>("res/models/teapot.obj");
     weird = make_shared<Model>("res/models/weird.obj");
     lightbulb = make_shared<Model>("res/models/light.obj");
     spotbulb = make_shared<Model>("res/models/spot.obj");
+
+    skyboxShader = make_shared<Shader>("res/shaders/skybox/vertex.glsl",
+                                      "res/shaders/skybox/geometry.glsl",
+                                      "res/shaders/skybox/fragment.glsl");
 
     modelShader = make_shared<Shader>("res/shaders/model/vertex.glsl",
                                       "res/shaders/model/geometry.glsl",
@@ -639,6 +714,7 @@ void setupOpenGL() {
         "res/shaders/lightbulb/geometry.glsl",
         "res/shaders/lightbulb/fragment.glsl");
 
+    skybox->shader = skyboxShader;
     ground->shader = modelShader;
     teapot->shader = modelShader;
     weird->shader = modelShader;
@@ -656,7 +732,10 @@ void cleanUp() {
 
     lightbulbShader = nullptr;
     modelShader = nullptr;
+    skyboxShader = nullptr;
 
+    skybox = nullptr;
+    ground = nullptr;
     lightbulb = nullptr;
     spotbulb = nullptr;
     teapot = nullptr;
@@ -709,7 +788,7 @@ void performMainLoop() {
 
         setupSceneGraph(deltaTime.count(), displayWidth,
                         displayHeight);
-        scene.render(projection * view);
+        scene.render(projection * view, projection, view);
 
         // ------------------------------------------------------- UI -- //
         prepareUserInterfaceWindow();

@@ -1,4 +1,4 @@
-# Programowanie Aplikacji Graficznych - Zadanie 4
+# Programowanie Aplikacji Graficznych - Zadanie 5
 
 1. **Środowisko implementacji**
     * CMake *3.8*

@@ -37,6 +37,10 @@ struct LightParameters {
 // //////////////////////////////////////////////////////////// Uniforms //
 uniform bool pbrEnabled;
 
+uniform bool reflectOverride;
+uniform bool refractOverride;
+
+uniform samplerCube texSkybox;
 uniform sampler2D texAo;
 uniform sampler2D texAlbedo;
 uniform sampler2D texMetalness;
@@ -184,13 +188,26 @@ void main() {
 
     vec4 pixelColor = vec4(texture(texAo, fTexCoords).rgb * outColor.rgb, 1.0);
 
-    if (pbrEnabled) {
-        outColor = pow(pixelColor, vec4(1.0 / 2.2));
+    if (reflectOverride) {
+        outColor = vec4(texture(texSkybox,
+                reflect(normalize(fPosition - viewPos),
+                normalize(fNormal))).rgb, 1.0);
+    }
+    else if (refractOverride) {
+        float alpha = 1.0 / 1.52;
+        outColor = vec4(texture(texSkybox,
+                refract(normalize(fPosition - viewPos),
+                normalize(fNormal), alpha)).rgb, 1.0);
     }
     else {
-        outColor = pow(pixelColor
-                       * pow(texture(texAlbedo, fTexCoords), vec4(2.2)),
-                   vec4(1.0 / 2.2));
+        if (pbrEnabled) {
+            outColor = pow(pixelColor, vec4(1.0 / 2.2));
+        }
+        else {
+            outColor = pow(pixelColor
+            * pow(texture(texAlbedo, fTexCoords), vec4(2.2)),
+            vec4(1.0 / 2.2));
+        }
     }
 }
 

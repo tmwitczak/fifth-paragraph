@@ -23,6 +23,7 @@ void Mesh::render(shared_ptr<Shader> shader) const {
     shader->uniform1i("texMetalness", 2);
     shader->uniform1i("texRoughness", 3);
     shader->uniform1i("texNormal", 4);
+    shader->uniform1i("texSkybox", 5);
 
     shader->uniform1i("instances", 1);
 
@@ -34,8 +35,6 @@ void Mesh::render(shared_ptr<Shader> shader) const {
     glBindVertexArray(vao);
         glDrawElementsInstanced(GL_TRIANGLES, indices.size(),
                        GL_UNSIGNED_INT, nullptr, 1);
-    glBindVertexArray(0);
-    glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 void Mesh::setupMesh() {
@@ -62,7 +61,6 @@ void Mesh::setupMesh() {
         glEnableVertexAttribArray(3);
         glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(2 * sizeof(glm::vec3) + sizeof(glm::vec2)));
     }
-    glBindVertexArray(0);
 }
 
 Mesh::~Mesh() {

@@ -76,16 +76,14 @@ public:
         glDepthMask(GL_FALSE);
 
         shader->use();
-        shader->uniform1i("texSkybox", 0);
+        shader->uniform1i("texSkybox", 5);
 
-        glActiveTexture(GL_TEXTURE0);
+        glActiveTexture(GL_TEXTURE5);
         glBindTexture(GL_TEXTURE_CUBE_MAP, cubemap);
         glBindVertexArray(vao);
         {
             glDrawArrays(GL_TRIANGLES, 0, 36);
         }
-        glBindVertexArray(0);
-        glBindTexture(GL_TEXTURE_2D, 0);
 
         glDepthMask(GL_TRUE);
     }

@@ -192,6 +192,8 @@ struct GraphNode {
     vector<shared_ptr<Renderable>> model;
     vector<int> instances;
     vector<vec3> offset;
+    vector<bool> reflect;
+    vector<bool> refract;
     GLuint overrideTexture;
     int iSkybox;
 
@@ -211,6 +213,11 @@ struct GraphNode {
                 else {
                     glDepthFunc(GL_LESS);
                 }
+
+                model[i]->shader->uniform1i("reflectOverride",
+                                            (int)(reflect[i]));
+                model[i]->shader->uniform1i("refractOverride",
+                                            (int)(refract[i]));
 
                 model[i]->shader->uniformMatrix4fv("transform",
                                                    value_ptr(
@@ -569,33 +576,45 @@ void setupSceneGraph(float const deltaTime, float const displayWidth,
     scene.model.clear();
     scene.instances.clear();
     scene.offset.clear();
+    scene.reflect.clear();
+    scene.refract.clear();
 
     scene.iSkybox = 0;
     scene.transform.push_back(identity);
     scene.model.push_back(skybox);
     scene.instances.push_back(1);
     scene.offset.emplace_back(0);
+    scene.reflect.emplace_back(false);
+    scene.refract.emplace_back(false);
 
     scene.transform.push_back(identity);
     scene.model.push_back(ground);
     scene.instances.push_back(1);
     scene.offset.emplace_back(0);
+    scene.reflect.emplace_back(false);
+    scene.refract.emplace_back(false);
 
     scene.transform.push_back(identity);
     scene.model.push_back(weird);
     scene.instances.push_back(25);
     scene.offset.emplace_back(2.5, 0, 2.5);
+    scene.reflect.emplace_back(true);
+    scene.refract.emplace_back(false);
 
     scene.transform.push_back(identity);
     scene.model.push_back(teapot);
     scene.instances.push_back(25);
     scene.offset.emplace_back(0);
+    scene.reflect.emplace_back(false);
+    scene.refract.emplace_back(false);
 
     if (showLightDummies) {
         scene.transform.push_back(glm::translate(mat4(1), ImVec4ToVec3(lightPoint.position)));
         scene.model.push_back(lightbulb);
         scene.instances.push_back(1);
         scene.offset.emplace_back(0);
+        scene.reflect.emplace_back(false);
+        scene.refract.emplace_back(false);
 
         vec3 a = glm::normalize(vec3(0, -1, 0));
         vec3 b = glm::normalize(ImVec4ToVec3(lightSpot1.direction));
@@ -605,6 +624,8 @@ void setupSceneGraph(float const deltaTime, float const displayWidth,
         scene.model.push_back(spotbulb);
         scene.instances.push_back(1);
         scene.offset.emplace_back(0);
+        scene.reflect.emplace_back(false);
+        scene.refract.emplace_back(false);
 
         a = glm::normalize(vec3(0, -1, 0));
         b = glm::normalize(ImVec4ToVec3(lightSpot2.direction));
@@ -614,6 +635,8 @@ void setupSceneGraph(float const deltaTime, float const displayWidth,
         scene.model.push_back(spotbulb);
         scene.instances.push_back(1);
         scene.offset.emplace_back(0);
+        scene.reflect.emplace_back(false);
+        scene.refract.emplace_back(false);
     }
 }
 

@@ -17,7 +17,8 @@ uniform mat4 transform;
 // //////////////////////////////////////////////////////////////// Main //
 void main() {
     gTexCoords = vPosition;
-    gl_Position = transform * vec4(vPosition, 1.0);
+    vec4 position = transform * vec4(vPosition, 1.0);
+    gl_Position = position.xyww;
 }
 
 // ///////////////////////////////////////////////////////////////////// //

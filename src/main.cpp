@@ -203,9 +203,15 @@ struct GraphNode {
 
             if (model[i]) {
                 model[i]->shader->use();
+
                 if (i == iSkybox) {
+                    glDepthFunc(GL_LEQUAL);
                     renderTransform = projection * mat4(mat3(view)) * transform[i];
                 }
+                else {
+                    glDepthFunc(GL_LESS);
+                }
+
                 model[i]->shader->uniformMatrix4fv("transform",
                                                    value_ptr(
                                                        renderTransform));

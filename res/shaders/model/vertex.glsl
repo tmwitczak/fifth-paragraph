@@ -9,6 +9,7 @@ layout (location = 3) in vec3 vTangent;
 
 // ///////////////////////////////////////////////////////////// Outputs //
 out vec3 gPosition;
+out vec3 gPositionLightSpace;
 out vec3 gNormal;
 out vec2 gTexCoords;
 out vec3 gTangent;
@@ -16,6 +17,7 @@ out vec3 gTangent;
 // //////////////////////////////////////////////////////////// Uniforms //
 uniform mat4 world;
 uniform mat4 transform;
+uniform mat4 lightSpaceTransform;
 
 uniform int instances;
 uniform vec3 offset;
@@ -44,6 +46,7 @@ void main() {
 
     // Pass variables to geometry shader
     gPosition = (world * vec4(vPosition + translations[gl_InstanceID], 1.0)).xyz;
+    gPositionLightSpace = (lightSpaceTransform * vec4(gPosition, 1.0)).xyz;
     gNormal = normalize((world * vec4(vNormal, 1.0)).xyz);
     gTexCoords = vTexCoords;
     gTangent = normalize((world * vec4(vTangent, 1.0)).xyz);

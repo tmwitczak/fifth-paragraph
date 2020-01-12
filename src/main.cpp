@@ -3,6 +3,7 @@
 #include "skybox.hpp"
 #include "opengl-headers.hpp"
 #include "shader.hpp"
+#include "shadow-map.hpp"
 
 #include <array>
 #include <chrono>
@@ -44,11 +45,12 @@ using std::unique_ptr;
 using std::vector;
 
 // ////////////////////////////////////////////////////// Math functions //
-template <typename T>
+template<typename T>
 T clamp(T x, T min, T max) {
     return ((x < min) ? min : ((x > max) ? max : x));
 }
-template <typename T>
+
+template<typename T>
 T lerp(T a, T b, float alpha) {
     return (1.0f - alpha) * a + alpha * b;
 }
@@ -58,19 +60,23 @@ vec3 cameraPos(5.0f);
 
 bool pbrEnabled = true;
 bool quitProgram = false;
+
 // ///////////////////////////////////////////////////////// Conversions //
 vec3 ImVec4ToVec3(ImVec4 a) {
     return vec3(a.x, a.y, a.z);
 }
+
 ImVec4 Vec3ToImVec4(vec3 a) {
     return {a.x, a.y, a.z, 1.0};
 }
+
 // ///////////////////////////////////////////////////// Enum: LightType //
 enum LightType {
     LT_POINT,
     LT_DIRECTIONAL,
     LT_SPOT
 };
+
 // ///////////////////////////////////////////// Struct: LightParameters //
 struct LightParameters {
     string name;
@@ -91,7 +97,7 @@ struct LightParameters {
     float specularShininess;
 
     void setShaderParameters(shared_ptr<Shader> shader) {
-        shader->uniform1i("pbrEnabled", (int)pbrEnabled);
+        shader->uniform1i("pbrEnabled", (int) pbrEnabled);
 
         shader->uniform1f(name + ".enable", enable);
 
@@ -99,9 +105,11 @@ struct LightParameters {
         shader->uniform3f(name + ".position", ImVec4ToVec3(position));
         shader->uniform1f(name + ".angle", angle);
 
-        shader->uniform1f(name + ".attenuationConstant", attenuationConstant);
+        shader->uniform1f(name + ".attenuationConstant",
+                          attenuationConstant);
         shader->uniform1f(name + ".attenuationLinear", attenuationLinear);
-        shader->uniform1f(name + ".attenuationQuadratic", attenuationQuadratic);
+        shader->uniform1f(name + ".attenuationQuadratic",
+                          attenuationQuadratic);
 
         shader->uniform1f(name + ".ambientIntensity", ambientIntensity);
         shader->uniform3f(name + ".ambientColor",
@@ -118,73 +126,73 @@ struct LightParameters {
 
 // Lights
 LightParameters lightDirectional = {
-    "lightDirectional",
-    LT_DIRECTIONAL,
-    0.5,
-    {1.0, -0.1, 0.3, 1.0},
-    {0.0, 0.0, 0.0, 1.0},
-    radians(0.0),
-    0.0,
-    0.0,
-    0.0,
-    0.0,
-    {1.0, 1.0, 1.0, 1.0},
-    1.0,
-    {1.0, 0.82, 0.63, 1.0},
-    1.0,
-    {1.0, 1.0, 1.0, 1.0},
-    256.0};
+        "lightDirectional",
+        LT_DIRECTIONAL,
+        0.5,
+        {1.0, -0.1, 0.3, 1.0},
+        {0.0, 0.0, 0.0, 1.0},
+        radians(0.0),
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        {1.0, 1.0, 1.0, 1.0},
+        1.0,
+        {1.0, 0.82, 0.63, 1.0},
+        1.0,
+        {1.0, 1.0, 1.0, 1.0},
+        256.0};
 LightParameters lightPoint = {
-    "lightPoint",
-    LT_POINT,
-    1.0,
-    {0.0, 0.0, 0.0, 1.0},
-    {0.0, 10.0, 0.0, 1.0},
-    radians(0.0),
-    0.0,
-    0.05,
-    0.01,
-    0.0,
-    {1.0, 1.0, 1.0, 1.0},
-    1.0,
-    {1.0, 0.57, 0.16, 1.0},
-    1.0,
-    {1.0, 1.0, 1.0, 1.0},
-    256.0};
+        "lightPoint",
+        LT_POINT,
+        1.0,
+        {0.0, 0.0, 0.0, 1.0},
+        {0.0, 10.0, 0.0, 1.0},
+        radians(0.0),
+        0.0,
+        0.05,
+        0.01,
+        0.0,
+        {1.0, 1.0, 1.0, 1.0},
+        1.0,
+        {1.0, 0.57, 0.16, 1.0},
+        1.0,
+        {1.0, 1.0, 1.0, 1.0},
+        256.0};
 LightParameters lightSpot1 = {
-    "lightSpot1",
-    LT_SPOT,
-    1.0,
-    {1.0, -1.0, 0.0, 1.0},
-    {-10.0, 5.0, 0.0, 1.0},
-    radians(60.0),
-    0.0,
-    0.025,
-    0.005,
-    0.0,
-    {1.0, 0.0, 0.0, 1.0},
-    1.0,
-    {1.0, 0.0, 0.0, 1.0},
-    1.0,
-    {1.0, 1.0, 1.0, 1.0},
-    256.0};
+        "lightSpot1",
+        LT_SPOT,
+        1.0,
+        {1.0, -1.0, 0.0, 1.0},
+        {-10.0, 5.0, 0.0, 1.0},
+        radians(60.0),
+        0.0,
+        0.025,
+        0.005,
+        0.0,
+        {1.0, 0.0, 0.0, 1.0},
+        1.0,
+        {1.0, 0.0, 0.0, 1.0},
+        1.0,
+        {1.0, 1.0, 1.0, 1.0},
+        256.0};
 LightParameters lightSpot2 = {
-    "lightSpot2",
-    LT_SPOT,
-    1.0,
-    {-1.0, -1.0, -1.0, 1.0},
-    {0.0, 15.0, 25.0, 1.0},
-    radians(20.0),
-    0.0,
-    0.005,
-    0.0,
-    0.0,
-    {0.3, 0.4, 1.0, 1.0},
-    1.0,
-    {0.3, 0.4, 1.0, 1.0},
-    1.0,
-    {1.0, 1.0, 1.0, 1.0},
-    256.0};
+        "lightSpot2",
+        LT_SPOT,
+        1.0,
+        {-1.0, -1.0, -1.0, 1.0},
+        {0.0, 15.0, 25.0, 1.0},
+        radians(20.0),
+        0.0,
+        0.005,
+        0.0,
+        0.0,
+        {0.3, 0.4, 1.0, 1.0},
+        1.0,
+        {0.3, 0.4, 1.0, 1.0},
+        1.0,
+        {1.0, 1.0, 1.0, 1.0},
+        256.0};
 
 // /////////////////////////////////////////////////// Struct: GraphNode //
 struct GraphNode {
@@ -199,43 +207,50 @@ struct GraphNode {
 
     GraphNode() : overrideTexture(0) {}
 
-    void render(mat4 const &vp, mat4 const &projection, mat4 const &view) {
+    void render(mat4 const &vp, mat4 const &projection, mat4 const &view,
+                mat4 const &lightSpaceTransform = mat4(1.0),
+                shared_ptr<Shader> const &shadowShader = nullptr) {
         for (int i = 0; i < model.size(); i++) {
             mat4 renderTransform = vp * transform[i];
 
             if (model[i]) {
-                model[i]->shader->use();
+                shared_ptr<Shader> shader = shadowShader ? shadowShader
+                                                         : model[i]->shader;
+
+                shader->use();
 
                 if (i == iSkybox) {
                     glDepthFunc(GL_LEQUAL);
-                    renderTransform = projection * mat4(mat3(view)) * transform[i];
-                }
-                else {
+                    renderTransform =
+                            projection * mat4(mat3(view)) * transform[i];
+                } else {
                     glDepthFunc(GL_LESS);
                 }
 
-                model[i]->shader->uniform1i("reflectOverride",
-                                            (int)(reflect[i]));
-                model[i]->shader->uniform1i("refractOverride",
-                                            (int)(refract[i]));
+                shader->uniform1i("reflectOverride",
+                                  (int) (reflect[i]));
+                shader->uniform1i("refractOverride",
+                                  (int) (refract[i]));
 
-                model[i]->shader->uniformMatrix4fv("transform",
-                                                   value_ptr(
-                                                       renderTransform));
-                model[i]->shader->uniformMatrix4fv("world",
-                                                   value_ptr(
-                                                       transform[i]));
-                model[i]->shader->uniform3f("viewPos", cameraPos.x,
-                                            cameraPos.y,
-                                            cameraPos.z);
-                model[i]->shader->uniform3f("offset", offset[i]);
+                shader->uniformMatrix4fv("transform",
+                                         value_ptr(
+                                                 renderTransform));
+                shader->uniformMatrix4fv("world",
+                                         value_ptr(
+                                                 transform[i]));
+                shader->uniformMatrix4fv("lightSpaceTransform",
+                                         value_ptr(lightSpaceTransform));
+                shader->uniform3f("viewPos", cameraPos.x,
+                                  cameraPos.y,
+                                  cameraPos.z);
+                shader->uniform3f("offset", offset[i]);
 
-                lightDirectional.setShaderParameters(model[i]->shader);
-                lightPoint.setShaderParameters(model[i]->shader);
-                lightSpot1.setShaderParameters(model[i]->shader);
-                lightSpot2.setShaderParameters(model[i]->shader);
+                lightDirectional.setShaderParameters(shader);
+                lightPoint.setShaderParameters(shader);
+                lightSpot1.setShaderParameters(shader);
+                lightSpot2.setShaderParameters(shader);
 
-                model[i]->render(model[i]->shader);
+                model[i]->render(shader);
             }
         }
     }
@@ -251,11 +266,11 @@ char const *WINDOW_TITLE = "Tomasz Witczak 216920 - Zadanie 5";
 GLFWwindow *window = nullptr;
 
 // ---------------------------------------------------------- Shaders -- //
-shared_ptr<Shader> skyboxShader, modelShader, lightbulbShader;
+shared_ptr<Shader> skyboxShader, modelShader, lightbulbShader, shadowShader;
 
 // ----------------------------------------------------------- Camera -- //
 vec3 cameraFront(1.0f, 0.0f, 0.0f),
-    cameraUp(0.0f, 1.0f, 0.0f);
+        cameraUp(0.0f, 1.0f, 0.0f);
 
 vec3 cameraPosTarget = cameraPos;
 vec3 cameraFrontTarget = cameraFront;
@@ -281,6 +296,8 @@ bool showLightDummies = true;
 // ----------------------------------------------------------- Models -- //
 shared_ptr<Renderable> skybox, ground, teapot, weird, lightbulb, spotbulb;
 
+shared_ptr<ShadowMap> shadowMap;
+
 // //////////////////////////////////////////////////////////// Textures //
 GLuint loadTextureFromFile(string const &filename) {
     // Generate OpenGL resource
@@ -301,9 +318,9 @@ GLuint loadTextureFromFile(string const &filename) {
 
         int imageWidth, imageHeight, imageNumberOfChannels;
         unsigned char *textureData = stbi_load(
-            filename.c_str(),
-            &imageWidth, &imageHeight,
-            &imageNumberOfChannels, 0);
+                filename.c_str(),
+                &imageWidth, &imageHeight,
+                &imageNumberOfChannels, 0);
 
         if (textureData == nullptr) {
             throw exception("Failed to load texture!");
@@ -346,11 +363,16 @@ GLuint loadCubemapFromFile(vector<string> const &filenames) {
     glBindTexture(GL_TEXTURE_CUBE_MAP, texture);
     {
         // Set texture parameters
-        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER,
+                        GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER,
+                        GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S,
+                        GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T,
+                        GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R,
+                        GL_CLAMP_TO_EDGE);
 
         // Load texture from file
         stbi_set_flip_vertically_on_load(false);
@@ -358,9 +380,9 @@ GLuint loadCubemapFromFile(vector<string> const &filenames) {
         for (int i = 0; i < filenames.size(); ++i) {
             int imageWidth, imageHeight, imageNumberOfChannels;
             unsigned char *textureData = stbi_load(
-                filenames[i].c_str(),
-                &imageWidth, &imageHeight,
-                &imageNumberOfChannels, 0);
+                    filenames[i].c_str(),
+                    &imageWidth, &imageHeight,
+                    &imageNumberOfChannels, 0);
 
             if (textureData == nullptr) {
                 throw exception("Failed to load texture!");
@@ -368,20 +390,20 @@ GLuint loadCubemapFromFile(vector<string> const &filenames) {
 
             // Pass image to OpenGL
             glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGB,
-                        imageWidth, imageHeight, 0,
-                        [&]() -> GLenum {
-                            switch (imageNumberOfChannels) {
-                                case 1:
-                                    return GL_RED;
-                                case 3:
-                                    return GL_RGB;
-                                case 4:
-                                    return GL_RGBA;
-                                default:
-                                    return GL_RGB;
-                            }
-                        }(),
-                        GL_UNSIGNED_BYTE, textureData);
+                         imageWidth, imageHeight, 0,
+                         [&]() -> GLenum {
+                             switch (imageNumberOfChannels) {
+                                 case 1:
+                                     return GL_RED;
+                                 case 3:
+                                     return GL_RGB;
+                                 case 4:
+                                     return GL_RGBA;
+                                 default:
+                                     return GL_RGB;
+                             }
+                         }(),
+                         GL_UNSIGNED_BYTE, textureData);
 
             // Generate mipmap for loaded texture
             glGenerateMipmap(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i);
@@ -415,11 +437,11 @@ void constructTabForLight(LightParameters &light) {
     ImGui::NewLine();
     ImGui::SliderFloat("Enable", &light.enable, 0.0f, 1.0f);
     if (light.type != LT_POINT) {
-        ImGui::SliderFloat3("Direction", (float *)&light.direction, -1.0f,
+        ImGui::SliderFloat3("Direction", (float *) &light.direction, -1.0f,
                             1.0f);
     }
     if (light.type != LT_DIRECTIONAL) {
-        ImGui::SliderFloat3("Position", (float *)&light.position, -25.0f,
+        ImGui::SliderFloat3("Position", (float *) &light.position, -25.0f,
                             25.0f);
     }
     if (light.type == LT_SPOT) {
@@ -427,14 +449,16 @@ void constructTabForLight(LightParameters &light) {
     }
 
     if (pbrEnabled) {
-        ImGui::ColorEdit3("Color ", (float *)&light.diffuseColor);
+        ImGui::ColorEdit3("Color ", (float *) &light.diffuseColor);
     }
     ImGui::NewLine();
     if (light.type != LT_DIRECTIONAL) {
         ImGui::Text("Attenuation");
-        ImGui::SliderFloat("Constant", &light.attenuationConstant, 0.0f, 1.0f);
+        ImGui::SliderFloat("Constant", &light.attenuationConstant, 0.0f,
+                           1.0f);
         ImGui::SliderFloat("Linear", &light.attenuationLinear, 0.0f, 1.0f);
-        ImGui::SliderFloat("Quadratic", &light.attenuationQuadratic, 0.0f, 1.0f);
+        ImGui::SliderFloat("Quadratic", &light.attenuationQuadratic, 0.0f,
+                           1.0f);
         ImGui::NewLine();
     }
 
@@ -442,19 +466,19 @@ void constructTabForLight(LightParameters &light) {
         ImGui::Text("Ambient");
         ImGui::SliderFloat("Intensity", &light.ambientIntensity, 0.0f,
                            1.0f);
-        ImGui::ColorEdit3("Color", (float *)&light.ambientColor);
+        ImGui::ColorEdit3("Color", (float *) &light.ambientColor);
         ImGui::NewLine();
 
         ImGui::Text("Diffuse");
         ImGui::SliderFloat("Intensity ", &light.diffuseIntensity, 0.0f,
                            1.0f);
-        ImGui::ColorEdit3("Color ", (float *)&light.diffuseColor);
+        ImGui::ColorEdit3("Color ", (float *) &light.diffuseColor);
         ImGui::NewLine();
 
         ImGui::Text("Specular");
         ImGui::SliderFloat("Intensity  ", &light.specularIntensity, 0.0f,
                            1.0f);
-        ImGui::ColorEdit3("Color  ", (float *)&light.specularColor);
+        ImGui::ColorEdit3("Color  ", (float *) &light.specularColor);
         ImGui::SliderFloat("Shininess", &light.specularShininess, 1.0f,
                            256.0f);
         ImGui::NewLine();
@@ -468,9 +492,11 @@ void prepareUserInterfaceWindow() {
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
     ImGui::Begin("Task 4", nullptr,
-                 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize);
+                 ImGuiWindowFlags_NoDecoration |
+                 ImGuiWindowFlags_AlwaysAutoResize);
     {
-        ImGui::Text(pbrEnabled ? "Physical Based Rendering" : "Lambert+Blinn-Phong");
+        ImGui::Text(pbrEnabled ? "Physical Based Rendering"
+                               : "Lambert+Blinn-Phong");
         ImGui::Separator();
         ImGui::NewLine();
 
@@ -512,14 +538,14 @@ void prepareUserInterfaceWindow() {
 // //////////////////////////////////////////////////////// Setup OpenGL //
 void setupGLFW() {
     glfwSetErrorCallback(
-        [](int const errorNumber,
-           char const *description) {
-            cerr << "GLFW;"
-                 << "Error " << errorNumber
-                 << "; "
-                 << "Description: "
-                 << description;
-        });
+            [](int const errorNumber,
+               char const *description) {
+                cerr << "GLFW;"
+                     << "Error " << errorNumber
+                     << "; "
+                     << "Description: "
+                     << description;
+            });
     if (!glfwInit()) {
         throw exception("glfwInit error");
     }
@@ -552,11 +578,11 @@ void initializeOpenGLLoader() {
     failedToInitializeOpenGL = (glewInit() != GLEW_OK);
 #elif defined(IMGUI_IMPL_OPENGL_LOADER_GLAD)
     failedToInitializeOpenGL = !gladLoadGLLoader(
-        (GLADloadproc)glfwGetProcAddress);
+            (GLADloadproc) glfwGetProcAddress);
 #endif
     if (failedToInitializeOpenGL) {
         throw exception(
-            "Failed to initialize OpenGL loader!");
+                "Failed to initialize OpenGL loader!");
     }
 }
 
@@ -568,8 +594,8 @@ void setupSceneGraph(float const deltaTime, float const displayWidth,
 
     // Update point light's position
     lightPoint.position = Vec3ToImVec4(
-        glm::rotate(identity, angle, vec3(0.0f, 1.0f, 0.0f)) *
-        glm::vec4(25, 5, 0, 1));
+            glm::rotate(identity, angle, vec3(0.0f, 1.0f, 0.0f)) *
+            glm::vec4(25, 5, 0, 1));
 
     // Scene elements
     scene.transform.clear();
@@ -609,7 +635,8 @@ void setupSceneGraph(float const deltaTime, float const displayWidth,
     scene.refract.emplace_back(false);
 
     if (showLightDummies) {
-        scene.transform.push_back(glm::translate(mat4(1), ImVec4ToVec3(lightPoint.position)));
+        scene.transform.push_back(glm::translate(mat4(1), ImVec4ToVec3(
+                lightPoint.position)));
         scene.model.push_back(lightbulb);
         scene.instances.push_back(1);
         scene.offset.emplace_back(0);
@@ -619,8 +646,11 @@ void setupSceneGraph(float const deltaTime, float const displayWidth,
         vec3 a = glm::normalize(vec3(0, -1, 0));
         vec3 b = glm::normalize(ImVec4ToVec3(lightSpot1.direction));
         scene.transform.push_back(
-                glm::translate(mat4(1), ImVec4ToVec3(lightSpot1.position)) *
-                glm::toMat4(glm::angleAxis(glm::acos(glm::dot(a, b)), glm::normalize(glm::cross(a, b)))));
+                glm::translate(mat4(1),
+                               ImVec4ToVec3(lightSpot1.position)) *
+                glm::toMat4(glm::angleAxis(glm::acos(glm::dot(a, b)),
+                                           glm::normalize(
+                                                   glm::cross(a, b)))));
         scene.model.push_back(spotbulb);
         scene.instances.push_back(1);
         scene.offset.emplace_back(0);
@@ -630,8 +660,11 @@ void setupSceneGraph(float const deltaTime, float const displayWidth,
         a = glm::normalize(vec3(0, -1, 0));
         b = glm::normalize(ImVec4ToVec3(lightSpot2.direction));
         scene.transform.push_back(
-                glm::translate(mat4(1), ImVec4ToVec3(lightSpot2.position)) *
-                glm::toMat4(glm::angleAxis(glm::acos(glm::dot(a, b)), glm::normalize(glm::cross(a, b)))));
+                glm::translate(mat4(1),
+                               ImVec4ToVec3(lightSpot2.position)) *
+                glm::toMat4(glm::angleAxis(glm::acos(glm::dot(a, b)),
+                                           glm::normalize(
+                                                   glm::cross(a, b)))));
         scene.model.push_back(spotbulb);
         scene.instances.push_back(1);
         scene.offset.emplace_back(0);
@@ -650,9 +683,9 @@ void mouseCallback(GLFWwindow *window, double x, double y) {
 
     // Calculate mouse offset and update its position
     GLfloat offsetX =
-        mouseSensitivityFactor * (x - mousePositionLastX);
+            mouseSensitivityFactor * (x - mousePositionLastX);
     GLfloat offsetY =
-        mouseSensitivityFactor * (-(y - mousePositionLastY));
+            mouseSensitivityFactor * (-(y - mousePositionLastY));
 
     mousePositionLastX = x;
     mousePositionLastY = y;
@@ -663,9 +696,9 @@ void mouseCallback(GLFWwindow *window, double x, double y) {
 
     // Update camera's front vector
     cameraFrontTarget = normalize(
-        vec3(cos(yaw) * cos(pitch),
-             sin(pitch),
-             sin(yaw) * cos(pitch)));
+            vec3(cos(yaw) * cos(pitch),
+                 sin(pitch),
+                 sin(yaw) * cos(pitch)));
 }
 
 void handleKeyboardInput(float const deltaTime) {
@@ -673,11 +706,11 @@ void handleKeyboardInput(float const deltaTime) {
 
     if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) {
         cameraPosTarget +=
-            deltaTime * CAMERA_SPEED * normalize(cameraFront);
+                deltaTime * CAMERA_SPEED * normalize(cameraFront);
     }
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
         cameraPosTarget -=
-            deltaTime * CAMERA_SPEED * normalize(cameraFront);
+                deltaTime * CAMERA_SPEED * normalize(cameraFront);
     }
     if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
         cameraPosTarget -= deltaTime * CAMERA_SPEED *
@@ -731,17 +764,23 @@ void setupOpenGL() {
     spotbulb = make_shared<Model>("res/models/spot.obj");
 
     skyboxShader = make_shared<Shader>("res/shaders/skybox/vertex.glsl",
-                                      "res/shaders/skybox/geometry.glsl",
-                                      "res/shaders/skybox/fragment.glsl");
+                                       "res/shaders/skybox/geometry.glsl",
+                                       "res/shaders/skybox/fragment.glsl");
 
     modelShader = make_shared<Shader>("res/shaders/model/vertex.glsl",
                                       "res/shaders/model/geometry.glsl",
                                       "res/shaders/model/fragment.glsl");
 
+    shadowShader = make_shared<Shader>("res/shaders/depth/vertex.glsl",
+                                       "res/shaders/depth/geometry.glsl",
+                                       "res/shaders/depth/fragment.glsl");
+
     lightbulbShader = make_shared<Shader>(
-        "res/shaders/lightbulb/vertex.glsl",
-        "res/shaders/lightbulb/geometry.glsl",
-        "res/shaders/lightbulb/fragment.glsl");
+            "res/shaders/lightbulb/vertex.glsl",
+            "res/shaders/lightbulb/geometry.glsl",
+            "res/shaders/lightbulb/fragment.glsl");
+
+    shadowMap = make_shared<ShadowMap>(2048, 2048);
 
     skybox->shader = skyboxShader;
     ground->shader = modelShader;
@@ -762,7 +801,9 @@ void cleanUp() {
     lightbulbShader = nullptr;
     modelShader = nullptr;
     skyboxShader = nullptr;
+    shadowShader = nullptr;
 
+    shadowMap = nullptr;
     skybox = nullptr;
     ground = nullptr;
     lightbulb = nullptr;
@@ -793,6 +834,40 @@ void performMainLoop() {
         glfwGetFramebufferSize(window, &displayWidth,
                                &displayHeight);
 
+        // Interpolate camera's properties
+        cameraPos = lerp(cameraPos, cameraPosTarget, 0.1f);
+        cameraFront = lerp(cameraFront, cameraFrontTarget, 0.1f);
+
+        // Scene graph
+        setupSceneGraph(deltaTime.count(), displayWidth,
+                        displayHeight);
+
+        // ======================================== Render shadow map == //
+        // ------------------------------------------- Clear viewport -- //
+        glViewport(0, 0, shadowMap->width, shadowMap->height);
+        glBindFramebuffer(GL_FRAMEBUFFER, shadowMap->depthMapFBO);
+        // {
+        glClear(GL_DEPTH_BUFFER_BIT);
+
+        // ----------------------------------- Set rendering mode -- //
+        glEnable(GL_DEPTH_TEST);
+
+        // ----------------------------------------- Render scene -- //
+        mat4 const lightProjection = glm::ortho(-50.0f, 50.0f,
+                                                -50.0f, 50.0f, 0.01f,
+                                                100.0f);
+        mat4 const lightView = lookAt(vec3(10.0f, 10.0f, 0.0f),
+                                      vec3(10.0f, 10.0f, 0.0f)
+                                      + ImVec4ToVec3(
+                                              lightDirectional.direction),
+                                      vec3(0.0f, 1.0f, 0.0f));
+
+        scene.render(lightProjection * lightView, lightProjection,
+                     lightView, mat4(1.0), shadowShader);
+        // }
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+        // ============================================= Render scene == //
         // ------------------------------------------- Clear viewport -- //
         glViewport(0, 0, displayWidth, displayHeight);
         glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
@@ -804,25 +879,24 @@ void performMainLoop() {
                       wireframeMode ? GL_LINE : GL_FILL);
 
         // --------------------------------------------- Render scene -- //
-        cameraPos = lerp(cameraPos, cameraPosTarget, 0.1f);
-        cameraFront = lerp(cameraFront, cameraFrontTarget, 0.1f);
-
         mat4 const projection = perspective(radians(60.0f),
-                                            ((float)displayWidth) /
-                                                ((float)displayHeight),
+                                            ((float) displayWidth) /
+                                            ((float) displayHeight),
                                             0.01f, 100.0f);
         mat4 const view = lookAt(cameraPos,
                                  cameraPos + cameraFront,
                                  cameraUp);
 
-        setupSceneGraph(deltaTime.count(), displayWidth,
-                        displayHeight);
-        scene.render(projection * view, projection, view);
+        glActiveTexture(GL_TEXTURE6);
+        glBindTexture(GL_TEXTURE_2D, shadowMap->depthMapTexture);
+
+        scene.render(projection * view, projection, view,
+                     lightProjection * lightView);
 
         // ------------------------------------------------------- UI -- //
         prepareUserInterfaceWindow();
         ImGui_ImplOpenGL3_RenderDrawData(
-            ImGui::GetDrawData());
+                ImGui::GetDrawData());
 
         // -------------------------------------------- Update screen -- //
         glfwMakeContextCurrent(window);

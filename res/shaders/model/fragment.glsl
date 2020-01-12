@@ -6,6 +6,7 @@ const float PI = 3.14159265359;
 
 // ////////////////////////////////////////////////////////////// Inputs //
 in vec3 fPosition;
+in vec3 fPositionLightSpace;
 in vec3 fNormal;
 in vec2 fTexCoords;
 in vec3 fTangent;
@@ -41,6 +42,7 @@ uniform bool reflectOverride;
 uniform bool refractOverride;
 
 uniform samplerCube texSkybox;
+uniform sampler2D texShadow;
 uniform sampler2D texAo;
 uniform sampler2D texAlbedo;
 uniform sampler2D texMetalness;
@@ -54,6 +56,31 @@ uniform LightParameters lightDirectional;
 uniform LightParameters lightPoint;
 uniform LightParameters lightSpot1;
 uniform LightParameters lightSpot2;
+
+// ////////////////////////////////////////////////////// Shadow mapping //
+float calculateShadow(vec3 normal)
+{
+    vec3 projectedCoordinates = fPositionLightSpace * 0.5 + 0.5;
+
+    if (projectedCoordinates.z > 1.0) {
+        return 0.0;
+    }
+
+    float closestDepth = texture(texShadow, projectedCoordinates.xy).r;
+    float currentDepth = projectedCoordinates.z;
+
+    float bias = max(0.025 * (1.0 - dot(-normalize(normal), normalize(lightDirectional.direction))), 0.005);
+
+    float shadow = 0.0;
+    vec2 texelSize = 1.0 / textureSize(texShadow, 0);
+    for (int x = -1; x <= 1; ++x) {
+        for (int y = -1; y <= 1; ++y) {
+            float pcfDepth = texture(texShadow, projectedCoordinates.xy + vec2(x, y) * texelSize).r;
+            shadow += ((currentDepth - bias) > pcfDepth ? 0.75 : 0.0);
+        }
+    }
+    return (shadow / 9.0);
+}
 
 // ////////////////////////////////////////////////////// Normal mapping //
 vec3 calculateMappedNormal() {
@@ -201,7 +228,7 @@ void main() {
     }
     else {
         if (pbrEnabled) {
-            outColor = pow(pixelColor, vec4(1.0 / 2.2));
+            outColor = pow(pixelColor, vec4(1.0 / 2.2)) * (1.0 - calculateShadow(calculateMappedNormal()));
         }
         else {
             outColor = pow(pixelColor

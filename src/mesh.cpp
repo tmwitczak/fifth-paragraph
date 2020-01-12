@@ -24,6 +24,7 @@ void Mesh::render(shared_ptr<Shader> shader) const {
     shader->uniform1i("texRoughness", 3);
     shader->uniform1i("texNormal", 4);
     shader->uniform1i("texSkybox", 5);
+    shader->uniform1i("texShadow", 6);
 
     shader->uniform1i("instances", 1);
 

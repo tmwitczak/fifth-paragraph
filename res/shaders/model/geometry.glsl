@@ -7,12 +7,14 @@ layout (triangle_strip, max_vertices = 3) out;
 
 // ////////////////////////////////////////////////////////////// Inputs //
 in vec3 gPosition[3];
+in vec3 gPositionLightSpace[3];
 in vec3 gNormal[3];
 in vec2 gTexCoords[3];
 in vec3 gTangent[3];
 
 // ///////////////////////////////////////////////////////////// Outputs //
 out vec3 fPosition;
+out vec3 fPositionLightSpace;
 out vec3 fNormal;
 out vec2 fTexCoords;
 out vec3 fTangent;
@@ -21,6 +23,7 @@ out vec3 fTangent;
 void main() {
     for (int i = 0; i < gl_in.length(); ++i) {
         fPosition = gPosition[i];
+        fPositionLightSpace = gPositionLightSpace[i];
         fNormal = gNormal[i];
         fTexCoords = gTexCoords[i];
         fTangent = gTangent[i];

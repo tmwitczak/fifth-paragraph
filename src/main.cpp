@@ -4,6 +4,7 @@
 #include "opengl-headers.hpp"
 #include "shader.hpp"
 #include "shadow-map.hpp"
+#include "font.hpp"
 
 #include <array>
 #include <chrono>
@@ -266,7 +267,8 @@ char const *WINDOW_TITLE = "Tomasz Witczak 216920 - Zadanie 5";
 GLFWwindow *window = nullptr;
 
 // ---------------------------------------------------------- Shaders -- //
-shared_ptr<Shader> skyboxShader, modelShader, lightbulbShader, shadowShader;
+shared_ptr<Shader> textShader, skyboxShader,
+        modelShader, lightbulbShader, shadowShader;
 
 // ----------------------------------------------------------- Camera -- //
 vec3 cameraFront(1.0f, 0.0f, 0.0f),
@@ -280,6 +282,8 @@ GLfloat pitch = 0.0f,
 
 bool grabMouse = true;
 bool isThisFirstIteration = true;
+
+shared_ptr<Font> font;
 
 // ------------------------------------------------------------ Mouse -- //
 GLfloat mousePositionLastX = WINDOW_WIDTH / 2.0f;
@@ -767,6 +771,10 @@ void setupOpenGL() {
                                        "res/shaders/skybox/geometry.glsl",
                                        "res/shaders/skybox/fragment.glsl");
 
+    textShader = make_shared<Shader>("res/shaders/text/vertex.glsl",
+                                     "res/shaders/text/geometry.glsl",
+                                     "res/shaders/text/fragment.glsl");
+
     modelShader = make_shared<Shader>("res/shaders/model/vertex.glsl",
                                       "res/shaders/model/geometry.glsl",
                                       "res/shaders/model/fragment.glsl");
@@ -789,6 +797,8 @@ void setupOpenGL() {
     lightbulb->shader = lightbulbShader;
     spotbulb->shader = lightbulbShader;
 
+    font = make_shared<Font>("res/fonts/changaone.ttf", 48, textShader);
+
     setupDearImGui();
 }
 
@@ -802,6 +812,7 @@ void cleanUp() {
     modelShader = nullptr;
     skyboxShader = nullptr;
     shadowShader = nullptr;
+    textShader = nullptr;
 
     shadowMap = nullptr;
     skybox = nullptr;
@@ -810,6 +821,8 @@ void cleanUp() {
     spotbulb = nullptr;
     teapot = nullptr;
     weird = nullptr;
+
+    font = nullptr;
 
     glfwDestroyWindow(window);
     glfwTerminate();
@@ -892,6 +905,17 @@ void performMainLoop() {
 
         scene.render(projection * view, projection, view,
                      lightProjection * lightView);
+
+        // ----------------------------------------------------- Text -- //
+        // Enable blending
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        font->render("test tekstu", 0.0f, (displayHeight - 48) / 2.0f,
+                     1.0f, vec3(1.0f, 1.0f, 1.0f),
+                     displayWidth, displayHeight);
+
+        glDisable(GL_BLEND);
 
         // ------------------------------------------------------- UI -- //
         prepareUserInterfaceWindow();

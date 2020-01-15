@@ -27,6 +27,9 @@ target_link_libraries(${PROJECT_NAME} "${GLAD_LIBRARY}" "${CMAKE_DL_LIBS}")
 target_link_libraries(${PROJECT_NAME} "${GLFW_LIBRARY}")
 target_link_libraries(${PROJECT_NAME} "${IMGUI_LIBRARY}" "${CMAKE_DL_LIBS}")
 target_link_libraries(${PROJECT_NAME} "${STB_IMAGE_LIBRARY}" "${CMAKE_DL_LIBS}")
+target_link_libraries(${PROJECT_NAME}
+        "${CMAKE_CURRENT_SOURCE_DIR}/../lib/freetype.lib"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../lib/freetyped.lib")
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE GLFW_INCLUDE_NONE)
 target_compile_definitions(${PROJECT_NAME} PRIVATE LIBRARY_SUFFIX="")

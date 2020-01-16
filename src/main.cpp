@@ -12,12 +12,14 @@
 #include <exception>
 #include <fstream>
 #include <iostream>
+#include <sstream>
 #include <memory>
 #include <tuple>
 #include <vector>
 
 using sysclock = std::chrono::system_clock;
 using sec = std::chrono::duration<float>;
+
 
 // ////////////////////////////////////////////////////////////// Usings //
 using glm::cross;
@@ -29,6 +31,7 @@ using glm::radians;
 using glm::rotate;
 using glm::scale;
 using glm::value_ptr;
+using glm::vec2;
 using glm::vec3;
 
 using std::array;
@@ -45,6 +48,259 @@ using std::stringstream;
 using std::unique_ptr;
 using std::vector;
 
+vec3 cameraPos(0.0f, 50.0f, -30.0f);
+vec3 cameraPosTarget = cameraPos;
+float cameraNudge = 0.2f;
+
+void resetGame(bool hard = false);
+
+int blocksDestroyed = 0;
+int points = 0;
+int const maxLives = 3;
+int lives = maxLives;
+bool menu = true;
+
+// //////////////////////////////////////////////////////// Game objects //
+struct Block {
+    bool render;
+    vec3 position;
+    vec2 dimensions;
+    shared_ptr<Renderable> model;
+    mat4 transform;
+
+    Block(shared_ptr<Shader> const &shader) {
+        render = true;
+        position = vec3(0.0f, 0.0f, 0.0f);
+        dimensions = vec2(4.0f, 1.0f);
+        model = nullptr;
+//        model->shader = shader;
+        transform = mat4(1.0f);
+    }
+
+    static vector<shared_ptr<Block>>
+    generateBlocks(shared_ptr<Shader> const &shader, int const x,
+                   int const y) {
+        vector<shared_ptr<Block>> blocks;
+
+        float const sceneWidth = 50.0f;
+        float const sceneHeight = 60.0f;
+        float const height = 2.0f * y;
+        float const l = sceneWidth / (float) x;
+        float const o = l / 2.0f;
+        float const p = height / (float) y;
+        float const u = p / 2.0f;
+
+        shared_ptr<Renderable> model = make_shared<Model>(
+                "res/models/block.obj");
+        for (int i = 0; i < y; ++i) {
+            for (int j = 0; j < x; ++j) {
+                shared_ptr<Block> block = make_shared<Block>(shader);
+                block->position.x =
+                        l * (float) j + o - (sceneWidth / 2.0f);
+                block->position.y = 0.0f;
+                block->position.z = p * (float) i + u - (height / 2.0f) +
+                                    (sceneHeight / 4.0f);
+                block->model = model;
+                block->model->shader = shader;
+                block->transform = glm::translate(mat4(1.0f),
+                                                  block->position);
+                blocks.push_back(block);
+            }
+        }
+
+        return blocks;
+    }
+};
+
+struct Palette {
+    vec3 position;
+    vec3 positionTarget;
+    vec2 dimensions;
+    shared_ptr<Renderable> model, modelBig, modelSmall;
+
+    Palette(shared_ptr<Shader> const &shader) {
+        position = vec3(0.0f, 0.0f, -25.0f);
+        positionTarget = vec3(0.0f, 0.0f, -25.0f);
+        modelBig = make_shared<Model>("res/models/palette-big.obj");
+        modelSmall = make_shared<Model>("res/models/palette-small.obj");
+        modelBig->shader = shader;
+        modelSmall->shader = shader;
+        setBig();
+    }
+
+    void setBig() {
+        model = modelBig;
+        dimensions = vec2(6.0f, 1.0f);
+    }
+
+    void setSmall() {
+        model = modelSmall;
+        dimensions = vec2(3.0f, 1.0f);
+    }
+};
+
+struct Ball {
+    bool sticky;
+    vec3 position;
+    vec3 direction;
+    float speed;
+    vec3 positionTarget;
+    float radius;
+    shared_ptr<Renderable> model;
+
+    Ball(shared_ptr<Shader> const &shader,
+         shared_ptr<Palette> const &palette) {
+        sticky = true;
+        position = palette->position +
+                   vec3(0.0f, 0.0f, palette->dimensions.y);
+        direction = vec3(0.05f, 0.0f, 1.0f);
+        speed = 20.0f;
+        positionTarget = vec3(0.0f, 0.0f, -25.0f);
+        radius = 0.5f;
+        model = make_shared<Model>("res/models/ball.obj");
+        model->shader = shader;
+    }
+
+    void start() {
+        sticky = false;
+    }
+
+    void move(float deltaTime, shared_ptr<Palette> const &palette) {
+        if (!sticky) {
+            direction = glm::normalize(direction);
+            position += speed * direction * deltaTime;
+
+            if (position.x <= -25.0f + radius) {
+                cameraPosTarget -= cameraNudge * direction;
+                direction.x = -direction.x;
+                position.x = -25.0f + radius;
+            } else if (position.x >= 25.0f - radius) {
+                cameraPosTarget -= cameraNudge * direction;
+                direction.x = -direction.x;
+                position.x = 25.0f - radius;
+            }
+
+            if (position.z >= 30.0f - radius) {
+                cameraPosTarget -= cameraNudge * direction;
+                palette->setSmall();
+                direction.z = -direction.z;
+                position.z = 30.0f - radius;
+                speed += 2.5f;
+            } else if (position.z <= -30.0f + radius) {
+                cameraPosTarget -= cameraNudge * direction;
+                resetGame();
+            }
+        }
+    }
+
+    void checkCollisions(vector<shared_ptr<Block>> const &blocks,
+                         shared_ptr<Palette> const &palette) {
+        // Palette
+        vec2 difference = vec2(palette->position.x, palette->position.z) +
+                          (glm::clamp(vec2(position.x, position.z) -
+                                      vec2(palette->position.x,
+                                           palette->position.z),
+                                      -palette->dimensions / 2.0f,
+                                      palette->dimensions / 2.0f)) -
+                          vec2(position.x, position.z);
+        if (glm::length(difference) < radius) {
+            // Find collision direction
+            vector<vec2> directions = {
+                    {0.0f,  1.0f},
+                    {0.0f,  -1.0f},
+                    {-1.0f, 0.0f},
+                    {1.0f,  0.0f}
+            };
+            float max = 0.0f;
+            int index = 0;
+            for (int i = 0; i < directions.size(); ++i) {
+                float x = dot(normalize(difference), directions[i]);
+                if (x > max) {
+                    max = x;
+                    index = i;
+                }
+            }
+            vec2 collisionDirection = directions[index];
+
+            // React to collision
+            cameraPosTarget -= cameraNudge * direction;
+
+            if (collisionDirection.y == 0.0f) {
+                direction.x = -direction.x;
+                position.x += collisionDirection.x * (radius -
+                                                      abs(collisionDirection.x));
+            } else {
+                direction.z = 1.0f;
+                position.z += collisionDirection.y * (radius -
+                                                      abs(collisionDirection.y));
+
+                direction.x = (position.x - palette->position.x) /
+                              (palette->dimensions.x / 2.0f);
+            }
+        }
+
+        // Blocks
+        for (auto const &block : blocks) {
+            if (!block->render) {
+                continue;
+            }
+
+            // Check for collision
+            difference = vec2(block->position.x, block->position.z) +
+                         (glm::clamp(vec2(position.x, position.z) -
+                                     vec2(block->position.x,
+                                          block->position.z),
+                                     -block->dimensions / 2.0f,
+                                     block->dimensions / 2.0f)) -
+                         vec2(position.x, position.z);
+            if (glm::length(difference) > radius) {
+                continue;
+            }
+
+            block->render = false;
+            cameraPosTarget -= cameraNudge * direction;
+            points++;
+            blocksDestroyed++;
+
+            if (blocksDestroyed == 4 || blocksDestroyed == 12) {
+                speed += 10.0f;
+            }
+
+            // Find collision direction
+            vector<vec2> directions = {
+                    {0.0f,  1.0f},
+                    {0.0f,  -1.0f},
+                    {-1.0f, 0.0f},
+                    {1.0f,  0.0f}
+            };
+            float max = 0.0f;
+            int index = 0;
+            for (int i = 0; i < directions.size(); ++i) {
+                float x = dot(normalize(difference), directions[i]);
+                if (x > max) {
+                    max = x;
+                    index = i;
+                }
+            }
+            vec2 collisionDirection = directions[index];
+
+            // React to collision
+            if (collisionDirection.y == 0.0f) {
+                direction.x = -direction.x;
+                position.x += collisionDirection.x * (radius -
+                                                      abs(collisionDirection.x));
+            } else {
+                direction.z = -direction.z;
+                position.z += collisionDirection.y * (radius -
+                                                      abs(collisionDirection.y));
+            }
+
+            break;
+        }
+    }
+};
+
+
 // ////////////////////////////////////////////////////// Math functions //
 template<typename T>
 T clamp(T x, T min, T max) {
@@ -57,7 +313,6 @@ T lerp(T a, T b, float alpha) {
 }
 
 // //////////////////////////////////////////////// Additional variables //
-vec3 cameraPos(5.0f);
 
 bool pbrEnabled = true;
 bool quitProgram = false;
@@ -98,30 +353,31 @@ struct LightParameters {
     float specularShininess;
 
     void setShaderParameters(shared_ptr<Shader> shader) {
-        shader->uniform1i("pbrEnabled", (int) pbrEnabled);
-
-        shader->uniform1f(name + ".enable", enable);
-
-        shader->uniform3f(name + ".direction", ImVec4ToVec3(direction));
-        shader->uniform3f(name + ".position", ImVec4ToVec3(position));
-        shader->uniform1f(name + ".angle", angle);
-
-        shader->uniform1f(name + ".attenuationConstant",
-                          attenuationConstant);
-        shader->uniform1f(name + ".attenuationLinear", attenuationLinear);
-        shader->uniform1f(name + ".attenuationQuadratic",
-                          attenuationQuadratic);
-
-        shader->uniform1f(name + ".ambientIntensity", ambientIntensity);
-        shader->uniform3f(name + ".ambientColor",
-                          ImVec4ToVec3(ambientColor));
-        shader->uniform1f(name + ".diffuseIntensity", diffuseIntensity);
+//        shader->uniform1i("pbrEnabled", (int) pbrEnabled);
+//
+//        shader->uniform1f(name + ".enable", enable);
+//
+        shader->uniform3f(name + ".direction",
+                          glm::normalize(ImVec4ToVec3(direction)));
+//        shader->uniform3f(name + ".position", ImVec4ToVec3(position));
+//        shader->uniform1f(name + ".angle", angle);
+//
+//        shader->uniform1f(name + ".attenuationConstant",
+//                          attenuationConstant);
+//        shader->uniform1f(name + ".attenuationLinear", attenuationLinear);
+//        shader->uniform1f(name + ".attenuationQuadratic",
+//                          attenuationQuadratic);
+//
+//        shader->uniform1f(name + ".ambientIntensity", ambientIntensity);
+//        shader->uniform3f(name + ".ambientColor",
+//                          ImVec4ToVec3(ambientColor));
+//        shader->uniform1f(name + ".diffuseIntensity", diffuseIntensity);
         shader->uniform3f(name + ".diffuseColor",
                           ImVec4ToVec3(diffuseColor));
-        shader->uniform1f(name + ".specularIntensity", specularIntensity);
-        shader->uniform3f(name + ".specularColor",
-                          ImVec4ToVec3(specularColor));
-        shader->uniform1f(name + ".specularShininess", specularShininess);
+//        shader->uniform1f(name + ".specularIntensity", specularIntensity);
+//        shader->uniform3f(name + ".specularColor",
+//                          ImVec4ToVec3(specularColor));
+//        shader->uniform1f(name + ".specularShininess", specularShininess);
     }
 };
 
@@ -129,8 +385,8 @@ struct LightParameters {
 LightParameters lightDirectional = {
         "lightDirectional",
         LT_DIRECTIONAL,
-        0.5,
-        {1.0, -0.1, 0.3, 1.0},
+        1.0,
+        {0.0, -0.4, -0.3, 1.0},
         {0.0, 0.0, 0.0, 1.0},
         radians(0.0),
         0.0,
@@ -146,7 +402,7 @@ LightParameters lightDirectional = {
 LightParameters lightPoint = {
         "lightPoint",
         LT_POINT,
-        1.0,
+        0.0,
         {0.0, 0.0, 0.0, 1.0},
         {0.0, 10.0, 0.0, 1.0},
         radians(0.0),
@@ -163,7 +419,7 @@ LightParameters lightPoint = {
 LightParameters lightSpot1 = {
         "lightSpot1",
         LT_SPOT,
-        1.0,
+        0.0,
         {1.0, -1.0, 0.0, 1.0},
         {-10.0, 5.0, 0.0, 1.0},
         radians(60.0),
@@ -180,7 +436,7 @@ LightParameters lightSpot1 = {
 LightParameters lightSpot2 = {
         "lightSpot2",
         LT_SPOT,
-        1.0,
+        0.0,
         {-1.0, -1.0, -1.0, 1.0},
         {0.0, 15.0, 25.0, 1.0},
         radians(20.0),
@@ -247,9 +503,9 @@ struct GraphNode {
                 shader->uniform3f("offset", offset[i]);
 
                 lightDirectional.setShaderParameters(shader);
-                lightPoint.setShaderParameters(shader);
-                lightSpot1.setShaderParameters(shader);
-                lightSpot2.setShaderParameters(shader);
+//                lightPoint.setShaderParameters(shader);
+//                lightSpot1.setShaderParameters(shader);
+//                lightSpot2.setShaderParameters(shader);
 
                 model[i]->render(shader);
             }
@@ -274,11 +530,10 @@ shared_ptr<Shader> textShader, skyboxShader,
 vec3 cameraFront(1.0f, 0.0f, 0.0f),
         cameraUp(0.0f, 1.0f, 0.0f);
 
-vec3 cameraPosTarget = cameraPos;
 vec3 cameraFrontTarget = cameraFront;
 
-GLfloat pitch = 0.0f,
-        yaw = 0.0f;
+GLfloat pitch = -1.15f,
+        yaw = -4.715f;
 
 bool grabMouse = true;
 bool isThisFirstIteration = true;
@@ -301,6 +556,11 @@ bool showLightDummies = true;
 shared_ptr<Renderable> skybox, ground, teapot, weird, lightbulb, spotbulb;
 
 shared_ptr<ShadowMap> shadowMap;
+
+// ------------------------------------------------------------- Game -- //
+vector<shared_ptr<Block>> blocks;
+shared_ptr<Palette> palette;
+shared_ptr<Ball> ball;
 
 // //////////////////////////////////////////////////////////// Textures //
 GLuint loadTextureFromFile(string const &filename) {
@@ -593,13 +853,13 @@ void initializeOpenGLLoader() {
 void setupSceneGraph(float const deltaTime, float const displayWidth,
                      float const displayHeight) {
     static mat4 const identity = mat4(1.0f);
-    static float angle = 0.0f;
-    angle += glm::radians(30.0f) * deltaTime;
+//    static float angle = 0.0f;
+//    angle += glm::radians(30.0f) * deltaTime;
 
-    // Update point light's position
-    lightPoint.position = Vec3ToImVec4(
-            glm::rotate(identity, angle, vec3(0.0f, 1.0f, 0.0f)) *
-            glm::vec4(25, 5, 0, 1));
+//    // Update point light's position
+//    lightPoint.position = Vec3ToImVec4(
+//            glm::rotate(identity, angle, vec3(0.0f, 1.0f, 0.0f)) *
+//            glm::vec4(25, 5, 0, 1));
 
     // Scene elements
     scene.transform.clear();
@@ -624,60 +884,90 @@ void setupSceneGraph(float const deltaTime, float const displayWidth,
     scene.reflect.emplace_back(false);
     scene.refract.emplace_back(false);
 
-    scene.transform.push_back(identity);
-    scene.model.push_back(weird);
-    scene.instances.push_back(25);
-    scene.offset.emplace_back(2.5, 0, 2.5);
-    scene.reflect.emplace_back(true);
-    scene.refract.emplace_back(false);
-
+//    scene.transform.push_back(identity);
+//    scene.model.push_back(weird);
+//    scene.instances.push_back(25);
+//    scene.offset.emplace_back(2.5, 0, 2.5);
+//    scene.reflect.emplace_back(true);
+//    scene.refract.emplace_back(false);
+//
     scene.transform.push_back(identity);
     scene.model.push_back(teapot);
-    scene.instances.push_back(25);
+    scene.instances.push_back(1);
     scene.offset.emplace_back(0);
     scene.reflect.emplace_back(false);
-    scene.refract.emplace_back(false);
+    scene.refract.emplace_back(true);
 
-    if (showLightDummies) {
-        scene.transform.push_back(glm::translate(mat4(1), ImVec4ToVec3(
-                lightPoint.position)));
-        scene.model.push_back(lightbulb);
-        scene.instances.push_back(1);
-        scene.offset.emplace_back(0);
-        scene.reflect.emplace_back(false);
-        scene.refract.emplace_back(false);
-
-        vec3 a = glm::normalize(vec3(0, -1, 0));
-        vec3 b = glm::normalize(ImVec4ToVec3(lightSpot1.direction));
-        scene.transform.push_back(
-                glm::translate(mat4(1),
-                               ImVec4ToVec3(lightSpot1.position)) *
-                glm::toMat4(glm::angleAxis(glm::acos(glm::dot(a, b)),
-                                           glm::normalize(
-                                                   glm::cross(a, b)))));
-        scene.model.push_back(spotbulb);
-        scene.instances.push_back(1);
-        scene.offset.emplace_back(0);
-        scene.reflect.emplace_back(false);
-        scene.refract.emplace_back(false);
-
-        a = glm::normalize(vec3(0, -1, 0));
-        b = glm::normalize(ImVec4ToVec3(lightSpot2.direction));
-        scene.transform.push_back(
-                glm::translate(mat4(1),
-                               ImVec4ToVec3(lightSpot2.position)) *
-                glm::toMat4(glm::angleAxis(glm::acos(glm::dot(a, b)),
-                                           glm::normalize(
-                                                   glm::cross(a, b)))));
-        scene.model.push_back(spotbulb);
+    for (auto const &block : blocks) {
+        if (!block->render) {
+            continue;
+        }
+        scene.transform.push_back(block->transform);
+        scene.model.push_back(block->model);
         scene.instances.push_back(1);
         scene.offset.emplace_back(0);
         scene.reflect.emplace_back(false);
         scene.refract.emplace_back(false);
     }
+
+    scene.transform.push_back(glm::translate(identity, palette->position));
+    scene.model.push_back(palette->model);
+    scene.instances.push_back(1);
+    scene.offset.emplace_back(0);
+    scene.reflect.emplace_back(false);
+    scene.refract.emplace_back(false);
+
+    scene.transform.push_back(glm::translate(identity, ball->position));
+    scene.model.push_back(ball->model);
+    scene.instances.push_back(1);
+    scene.offset.emplace_back(0);
+    scene.reflect.emplace_back(true);
+    scene.refract.emplace_back(false);
+
+//    if (showLightDummies) {
+//        scene.transform.push_back(glm::translate(mat4(1), ImVec4ToVec3(
+//                lightPoint.position)));
+//        scene.model.push_back(lightbulb);
+//        scene.instances.push_back(1);
+//        scene.offset.emplace_back(0);
+//        scene.reflect.emplace_back(false);
+//        scene.refract.emplace_back(false);
+//
+//        vec3 a = glm::normalize(vec3(0, -1, 0));
+//        vec3 b = glm::normalize(ImVec4ToVec3(lightSpot1.direction));
+//        scene.transform.push_back(
+//                glm::translate(mat4(1),
+//                               ImVec4ToVec3(lightSpot1.position)) *
+//                glm::toMat4(glm::angleAxis(glm::acos(glm::dot(a, b)),
+//                                           glm::normalize(
+//                                                   glm::cross(a, b)))));
+//        scene.model.push_back(spotbulb);
+//        scene.instances.push_back(1);
+//        scene.offset.emplace_back(0);
+//        scene.reflect.emplace_back(false);
+//        scene.refract.emplace_back(false);
+//
+//        a = glm::normalize(vec3(0, -1, 0));
+//        b = glm::normalize(ImVec4ToVec3(lightSpot2.direction));
+//        scene.transform.push_back(
+//                glm::translate(mat4(1),
+//                               ImVec4ToVec3(lightSpot2.position)) *
+//                glm::toMat4(glm::angleAxis(glm::acos(glm::dot(a, b)),
+//                                           glm::normalize(
+//                                                   glm::cross(a, b)))));
+//        scene.model.push_back(spotbulb);
+//        scene.instances.push_back(1);
+//        scene.offset.emplace_back(0);
+//        scene.reflect.emplace_back(false);
+//        scene.refract.emplace_back(false);
+//    }
 }
 
 void mouseCallback(GLFWwindow *window, double x, double y) {
+    if (menu) {
+        return;
+    }
+
     // Remove first iteration's shutter
     if (isThisFirstIteration) {
         mousePositionLastX = x;
@@ -706,7 +996,60 @@ void mouseCallback(GLFWwindow *window, double x, double y) {
 }
 
 void handleKeyboardInput(float const deltaTime) {
-    float const CAMERA_SPEED = 8.0f;
+    static bool spacePressed = false;
+    if (glfwGetKey(window, GLFW_KEY_TAB) == GLFW_PRESS &&
+        !spacePressed) {
+        grabMouse = !grabMouse;
+        spacePressed = true;
+
+        if (grabMouse) {
+            isThisFirstIteration = true;
+        }
+
+        glfwSetInputMode(window, GLFW_CURSOR,
+                         grabMouse ? GLFW_CURSOR_DISABLED
+                                   : GLFW_CURSOR_NORMAL);
+        glfwSetCursorPosCallback(window,
+                                 grabMouse ? mouseCallback : nullptr);
+    }
+    if (glfwGetKey(window, GLFW_KEY_TAB) == GLFW_RELEASE) {
+        spacePressed = false;
+    }
+    if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) {
+        quitProgram = true;
+    }
+
+    //--------------------------------------------------------------
+    if (menu) {
+        if (glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS) {
+            menu = false;
+            cameraFrontTarget = normalize(
+                    vec3(cos(yaw) * cos(pitch),
+                         sin(pitch),
+                         sin(yaw) * cos(pitch)));
+            cameraPosTarget = vec3(0.0f, 50.0f, -30.0f);
+        }
+        return;
+    } else {
+        if (glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS) {
+            pitch = -1.15f;
+            yaw = -4.715f;
+            cameraFrontTarget = normalize(
+                    vec3(cos(yaw) * cos(pitch),
+                         sin(pitch),
+                         sin(yaw) * cos(pitch)));
+            cameraPosTarget = vec3(0.0f, 50.0f, -30.0f);
+        }
+    }
+
+    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
+        menu = true;
+        resetGame(true);
+        return;
+    }
+
+    float const CAMERA_SPEED = 16.0f;
+    float const paletteSpeed = 30.0f;
 
     if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) {
         cameraPosTarget +=
@@ -725,29 +1068,22 @@ void handleKeyboardInput(float const deltaTime) {
                            normalize(cross(cameraFront, cameraUp));
     }
 
-    static bool spacePressed = false;
-    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS &&
-        !spacePressed) {
-        grabMouse = !grabMouse;
-        spacePressed = true;
-
-        if (grabMouse) {
-            isThisFirstIteration = true;
-        }
-
-        glfwSetInputMode(window, GLFW_CURSOR,
-                         grabMouse ? GLFW_CURSOR_DISABLED
-                                   : GLFW_CURSOR_NORMAL);
-        glfwSetCursorPosCallback(window,
-                                 grabMouse ? mouseCallback : nullptr);
+    // Game
+    if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS) {
+        palette->positionTarget +=
+                deltaTime * paletteSpeed * vec3(1.0f, 0.0f, 0.0f);
     }
-    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_RELEASE) {
-        spacePressed = false;
+    if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS) {
+        palette->positionTarget +=
+                deltaTime * paletteSpeed * vec3(-1.0f, 0.0f, 0.0f);
+    }
+    if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS
+        || glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
+        ball->start();
     }
 
-    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
-        quitProgram = true;
-    }
+    // ----
+
 }
 
 void setupOpenGL() {
@@ -761,11 +1097,11 @@ void setupOpenGL() {
     glfwSetCursorPosCallback(window, mouseCallback);
 
     skybox = make_shared<Skybox>();
-    ground = make_shared<Model>("res/models/ground.obj");
-    teapot = make_shared<Model>("res/models/teapot.obj");
-    weird = make_shared<Model>("res/models/weird.obj");
-    lightbulb = make_shared<Model>("res/models/light.obj");
-    spotbulb = make_shared<Model>("res/models/spot.obj");
+    ground = make_shared<Model>("res/models/scene.obj");
+    teapot = make_shared<Model>("res/models/star.obj");
+//    weird = make_shared<Model>("res/models/weird.obj");
+//    lightbulb = make_shared<Model>("res/models/light.obj");
+//    spotbulb = make_shared<Model>("res/models/spot.obj");
 
     skyboxShader = make_shared<Shader>("res/shaders/skybox/vertex.glsl",
                                        "res/shaders/skybox/geometry.glsl",
@@ -783,23 +1119,29 @@ void setupOpenGL() {
                                        "res/shaders/depth/geometry.glsl",
                                        "res/shaders/depth/fragment.glsl");
 
-    lightbulbShader = make_shared<Shader>(
-            "res/shaders/lightbulb/vertex.glsl",
-            "res/shaders/lightbulb/geometry.glsl",
-            "res/shaders/lightbulb/fragment.glsl");
+//    lightbulbShader = make_shared<Shader>(
+//            "res/shaders/lightbulb/vertex.glsl",
+//            "res/shaders/lightbulb/geometry.glsl",
+//            "res/shaders/lightbulb/fragment.glsl");
 
     shadowMap = make_shared<ShadowMap>(2048, 2048);
 
     skybox->shader = skyboxShader;
     ground->shader = modelShader;
     teapot->shader = modelShader;
-    weird->shader = modelShader;
-    lightbulb->shader = lightbulbShader;
-    spotbulb->shader = lightbulbShader;
+//    weird->shader = modelShader;
+//    lightbulb->shader = lightbulbShader;
+//    spotbulb->shader = lightbulbShader;
 
-    font = make_shared<Font>("res/fonts/changaone.ttf", 48, textShader);
+    font = make_shared<Font>("res/fonts/changaone.ttf", 72, textShader);
 
     setupDearImGui();
+
+    // Game
+    blocks = Block::generateBlocks(modelShader, 10, 8);
+    palette = make_shared<Palette>(modelShader);
+    ball = make_shared<Ball>(modelShader, palette);
+
 }
 
 // //////////////////////////////////////////////////////////// Clean up //
@@ -807,6 +1149,9 @@ void cleanUp() {
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
+
+    palette = nullptr;
+    ball = nullptr;
 
     lightbulbShader = nullptr;
     modelShader = nullptr;
@@ -826,6 +1171,32 @@ void cleanUp() {
 
     glfwDestroyWindow(window);
     glfwTerminate();
+}
+
+void resetGame(bool hard) {
+    lives--;
+    ball->sticky = true;
+    ball->position = vec3(0.0f, 0.0f, 0.0f);
+    ball->direction = vec3(0.05f, 0.0f, 1.0f);
+
+    if (lives > 0 && !hard) {
+        return;
+    }
+
+    for (auto const &block : blocks) {
+        block->render = true;
+    }
+    palette->setBig();
+    palette->positionTarget = vec3(0.0f, 0.0f, -25.0f);
+    points = 0;
+    blocksDestroyed = 0;
+    ball->speed = 20.0f;
+    lives = maxLives;
+    cameraFrontTarget = vec3(1.0f, 0.0f, 0.0f);
+    cameraPosTarget = vec3(0.0f, 50.0f, -30.0f);
+    menu = true;
+    pitch = -1.15f;
+    yaw = -4.715f;
 }
 
 // /////////////////////////////////////////////////////////// Main loop //
@@ -848,8 +1219,29 @@ void performMainLoop() {
                                &displayHeight);
 
         // Interpolate camera's properties
-        cameraPos = lerp(cameraPos, cameraPosTarget, 0.1f);
-        cameraFront = lerp(cameraFront, cameraFrontTarget, 0.1f);
+        cameraPos = lerp(cameraPos, cameraPosTarget, 0.05f);
+        cameraFront = lerp(cameraFront, cameraFrontTarget, 0.05f);
+
+        // Interpolate game objects' movement
+        palette->position = lerp(palette->position,
+                                 palette->positionTarget, 0.5f);
+        palette->position.x = clamp(palette->position.x,
+                                    -(25.0f -
+                                      palette->dimensions.x / 2.0f),
+                                    (25.0f -
+                                     palette->dimensions.x / 2.0f));
+        palette->positionTarget.x = clamp(palette->positionTarget.x,
+                                          -(25.0f -
+                                            palette->dimensions.x / 2.0f),
+                                          (25.0f -
+                                           palette->dimensions.x / 2.0f));
+        ball->move(deltaTime.count(), palette);
+        ball->checkCollisions(blocks, palette);
+        if (ball->sticky) {
+            ball->position = palette->position +
+                             vec3(0.0f, 0.0f, palette->dimensions.y);
+        }
+
 
         // Scene graph
         setupSceneGraph(deltaTime.count(), displayWidth,
@@ -866,14 +1258,14 @@ void performMainLoop() {
         glEnable(GL_DEPTH_TEST);
 
         // ----------------------------------------- Render scene -- //
-        mat4 const lightProjection = glm::ortho(-50.0f, 50.0f,
-                                                -50.0f, 50.0f, 0.01f,
-                                                100.0f);
-        mat4 const lightView = lookAt(vec3(10.0f, 10.0f, 0.0f),
-                                      vec3(10.0f, 10.0f, 0.0f)
-                                      + ImVec4ToVec3(
-                                              lightDirectional.direction),
-                                      vec3(0.0f, 1.0f, 0.0f));
+        static mat4 const lightProjection = glm::ortho(-100.0f, 100.0f,
+                                                       -100.0f, 100.0f,
+                                                       0.01f,
+                                                       200.0f);
+        mat4 const lightView = lookAt(
+                -50.0f * ImVec4ToVec3(lightDirectional.direction),
+                vec3(0.0f, 0.0f, 0.0f),
+                vec3(0.0f, 1.0f, 0.0f));
 
         scene.render(lightProjection * lightView, lightProjection,
                      lightView, mat4(1.0), shadowShader);
@@ -911,16 +1303,46 @@ void performMainLoop() {
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-        font->render("test tekstu", 0.0f, (displayHeight - 48) / 2.0f,
-                     1.0f, vec3(1.0f, 1.0f, 1.0f),
-                     displayWidth, displayHeight);
+        std::stringstream s;
+        if (menu) {
+            s << "Breakout";
+            font->render(s.str(), 25.0f, displayHeight -
+                                         80.0f,//(displayHeight - 48) / 2.0f,
+                         1.0f, vec3(1.0f, 1.0f, 1.0f),
+                         displayWidth, displayHeight);
+            s.str(std::string());
+            s << "Tomasz Witczak | 216920";
+            font->render(s.str(), 35.0f, displayHeight -
+                                         110.0f,//(displayHeight - 48) / 2.0f,
+                         0.25f, vec3(1.0f, 1.0f, 1.0f),
+                         displayWidth, displayHeight);
+            s.str(std::string());
+            s << "Press [Enter] to play";
+            font->render(s.str(), 25.0f, displayHeight -
+                                         180.0f,//(displayHeight - 48) / 2.0f,
+                         0.5f, vec3(1.0f, 1.0f, 1.0f),
+                         displayWidth, displayHeight);
+            s.str(std::string());
+        } else {
+            s << "Points | " << points;
+            font->render(s.str(), 25.0f, displayHeight -
+                                         60.0f,//(displayHeight - 48) / 2.0f,
+                         0.5f, vec3(1.0f, 1.0f, 1.0f),
+                         displayWidth, displayHeight);
+            s.str(std::string());
+            s << "Lives | " << lives << "/" << maxLives;
+            font->render(s.str(), 25.0f, displayHeight -
+                                         120.0f,//(displayHeight - 48) / 2.0f,
+                         0.5f, vec3(1.0f, 1.0f, 1.0f),
+                         displayWidth, displayHeight);
+        }
 
         glDisable(GL_BLEND);
 
         // ------------------------------------------------------- UI -- //
-        prepareUserInterfaceWindow();
-        ImGui_ImplOpenGL3_RenderDrawData(
-                ImGui::GetDrawData());
+//        prepareUserInterfaceWindow();
+//        ImGui_ImplOpenGL3_RenderDrawData(
+//                ImGui::GetDrawData());
 
         // -------------------------------------------- Update screen -- //
         glfwMakeContextCurrent(window);

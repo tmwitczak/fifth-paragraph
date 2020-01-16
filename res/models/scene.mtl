@@ -12,5 +12,4 @@ newmtl 01___Default
 	Kd 0.588235 0.588235 0.588235
 	Ks 0.000000 0.000000 0.000000
 	Ke 0.000000 0.000000 0.000000
-	map_Ka E:\github\tmwitczak\fourth-paragraph\res\textures\wood\albedo.jpg
-	map_Kd E:\github\tmwitczak\fourth-paragraph\res\textures\wood\albedo.jpg
+	map_Ka res\textures\wood

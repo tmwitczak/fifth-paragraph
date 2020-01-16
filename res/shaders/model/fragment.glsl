@@ -16,27 +16,27 @@ out vec4 outColor;
 
 // //////////////////////////////////////////////////// Light parameters //
 struct LightParameters {
-    float enable;
+//    float enable;
 
     vec3 direction;
-    vec3 position;
-    float angle;
-
-    float attenuationConstant;
-    float attenuationLinear;
-    float attenuationQuadratic;
-
-    float ambientIntensity;
-    vec3 ambientColor;
-    float diffuseIntensity;
+//    vec3 position;
+//    float angle;
+//
+//    float attenuationConstant;
+//    float attenuationLinear;
+//    float attenuationQuadratic;
+//
+//    float ambientIntensity;
+//    vec3 ambientColor;
+//    float diffuseIntensity;
     vec3 diffuseColor;
-    float specularIntensity;
-    vec3 specularColor;
-    float specularShininess;
+//    float specularIntensity;
+//    vec3 specularColor;
+//    float specularShininess;
 };
 
 // //////////////////////////////////////////////////////////// Uniforms //
-uniform bool pbrEnabled;
+//uniform bool pbrEnabled;
 
 uniform bool reflectOverride;
 uniform bool refractOverride;
@@ -53,9 +53,9 @@ uniform vec3 viewPos;
 uniform mat4 world;
 
 uniform LightParameters lightDirectional;
-uniform LightParameters lightPoint;
-uniform LightParameters lightSpot1;
-uniform LightParameters lightSpot2;
+//uniform LightParameters lightPoint;
+//uniform LightParameters lightSpot1;
+//uniform LightParameters lightSpot2;
 
 // ////////////////////////////////////////////////////// Shadow mapping //
 float calculateShadow(vec3 normal)
@@ -69,7 +69,7 @@ float calculateShadow(vec3 normal)
     float closestDepth = texture(texShadow, projectedCoordinates.xy).r;
     float currentDepth = projectedCoordinates.z;
 
-    float bias = max(0.025 * (1.0 - dot(-normalize(normal), normalize(lightDirectional.direction))), 0.005);
+    float bias = max(0.025 * (1.0 - dot(-normal, lightDirectional.direction)), 0.005);
 
     float shadow = 0.0;
     vec2 texelSize = 1.0 / textureSize(texShadow, 0);
@@ -91,30 +91,30 @@ vec3 calculateMappedNormal() {
 }
 
 // /////////////////////////////////////////////// Lambert + Blinn-Phong //
-vec4 lambertBlinnPhong(LightParameters light, vec3 lightDir, float factor) {
-    vec3 normal = calculateMappedNormal();
-
-    // Ambient
-    float ambientFactor = 1.0;
-    vec3 ambient = ambientFactor * light.ambientIntensity * light.ambientColor;
-
-    // Diffuse
-    float diffuseFactor = clamp(dot(lightDir, normal), 0.0, 1.0);
-    vec3 diffuse = diffuseFactor * light.diffuseIntensity * light.diffuseColor;
-
-    // Specular
-    float specularFactor = pow(
-                            clamp(dot(normal,
-                                normalize(lightDir +                // Half
-                                normalize(viewPos - fPosition))),   // View
-                            0.0, 1.0),
-                            light.specularShininess);
-    vec3 specular = specularFactor * light.specularIntensity * light.specularColor;
-
-    // Final lighting
-    return factor * vec4(ambient + diffuse + specular, 1.0);
-}
-
+//vec4 lambertBlinnPhong(LightParameters light, vec3 lightDir, float factor) {
+//    vec3 normal = calculateMappedNormal();
+//
+//    // Ambient
+//    float ambientFactor = 1.0;
+//    vec3 ambient = ambientFactor * light.ambientIntensity * light.ambientColor;
+//
+//    // Diffuse
+//    float diffuseFactor = clamp(dot(lightDir, normal), 0.0, 1.0);
+//    vec3 diffuse = diffuseFactor * light.diffuseIntensity * light.diffuseColor;
+//
+//    // Specular
+//    float specularFactor = pow(
+//                            clamp(dot(normal,
+//                                normalize(lightDir +                // Half
+//                                normalize(viewPos - fPosition))),   // View
+//                            0.0, 1.0),
+//                            light.specularShininess);
+//    vec3 specular = specularFactor * light.specularIntensity * light.specularColor;
+//
+//    // Final lighting
+//    return factor * vec4(ambient + diffuse + specular, 1.0);
+//}
+//
 // //////////////////////////////////////////// Physical Based Rendering //
 float distributionGGX(vec3 n, vec3 h, float roughness) {
     float a = pow(roughness, 4);
@@ -131,10 +131,10 @@ float geometrySmith(vec3 n, vec3 v, vec3 l, float roughness) {
 vec3 fresnelSchlick(float cosTheta, vec3 f0) {
     return f0 + (1.0 - f0) * pow(1.0 - cosTheta, 5.0);
 }
-vec4 pbr(LightParameters light, vec3 lightDir, float factor) {
+vec4 pbr(LightParameters light, vec3 lightDir, float factor, vec3 normal) {
     // Load texture parameters
     vec3 albedo = pow(texture(texAlbedo, fTexCoords).rgb, vec3(2.2));
-    vec3 normal = calculateMappedNormal();
+//    vec3 normal = calculateMappedNormal();
     float metalness = texture(texMetalness, fTexCoords).r;
     float roughness = texture(texRoughness, fTexCoords).r;
     float ao = texture(texAo, fTexCoords).r;
@@ -165,76 +165,76 @@ vec4 pbr(LightParameters light, vec3 lightDir, float factor) {
 }
 
 // ///////////////////////////////////////////////////////// Light types //
-float attenuate(LightParameters light, float distance) {
-    return 1.0 / (light.attenuationConstant
-                  + light.attenuationLinear * distance
-                  + light.attenuationQuadratic * pow(distance, 2));
+//float attenuate(LightParameters light, float distance) {
+//    return 1.0 / (light.attenuationConstant
+//                  + light.attenuationLinear * distance
+//                  + light.attenuationQuadratic * pow(distance, 2));
+//}
+
+vec4 directional(LightParameters light, vec3 normal) {
+//    if (pbrEnabled) {
+    return pbr(light, -normalize(light.direction), 1.0, normal);
+//    }
+//    return lambertBlinnPhong(light, -normalize(light.direction), 1.0);
 }
 
-vec4 directional(LightParameters light) {
-    if (pbrEnabled) {
-        return pbr(light, -normalize(light.direction), 1.0);
-    }
-    return lambertBlinnPhong(light, -normalize(light.direction), 1.0);
-}
-
-vec4 point(LightParameters light) {
-    vec3 lightDir = normalize(light.position - fPosition);
-    if (pbrEnabled) {
-        return pbr(light, lightDir,
-                   attenuate(light, length(light.position - fPosition)));
-    }
-    return lambertBlinnPhong(light, lightDir,
-                    attenuate(light, length(light.position - fPosition)));
-}
-
-vec4 spot(LightParameters light) {
-    vec3 lightDir = normalize(light.position - fPosition);
-    float spotCosAngle = dot(lightDir, -normalize(light.direction));
-    if (spotCosAngle < cos(light.angle)) {
-        return vec4(0);
-    }
-
-    if (pbrEnabled) {
-        return pbr(light, lightDir,
-            (spotCosAngle - cos(light.angle)) / (1.0 - cos(light.angle))
-                * attenuate(light, length(light.position - fPosition)));
-    }
-    return lambertBlinnPhong(light, lightDir,
-        (spotCosAngle - cos(light.angle)) / (1.0 - cos(light.angle))
-            * attenuate(light, length(light.position - fPosition)));
-}
+//vec4 point(LightParameters light) {
+//    vec3 lightDir = normalize(light.position - fPosition);
+//    if (pbrEnabled) {
+//        return pbr(light, lightDir,
+//                   attenuate(light, length(light.position - fPosition)));
+//    }
+//    return lambertBlinnPhong(light, lightDir,
+//                    attenuate(light, length(light.position - fPosition)));
+//}
+//
+//vec4 spot(LightParameters light) {
+//    vec3 lightDir = normalize(light.position - fPosition);
+//    float spotCosAngle = dot(lightDir, -normalize(light.direction));
+//    if (spotCosAngle < cos(light.angle)) {
+//        return vec4(0);
+//    }
+//
+//    if (pbrEnabled) {
+//        return pbr(light, lightDir,
+//            (spotCosAngle - cos(light.angle)) / (1.0 - cos(light.angle))
+//                * attenuate(light, length(light.position - fPosition)));
+//    }
+//    return lambertBlinnPhong(light, lightDir,
+//        (spotCosAngle - cos(light.angle)) / (1.0 - cos(light.angle))
+//            * attenuate(light, length(light.position - fPosition)));
+//}
 
 // //////////////////////////////////////////////////////////////// Main //
 void main() {
     // Final pixel color
-    outColor = clamp(directional(lightDirectional) * lightDirectional.enable
-                    + point(lightPoint) * lightPoint.enable
-                    + spot(lightSpot1) * lightSpot1.enable
-                    + spot(lightSpot2) * lightSpot2.enable, vec4(0.0), vec4(1.0));
+    vec3 normal = calculateMappedNormal();
+
+    outColor = clamp(directional(lightDirectional, normal),// * lightDirectional.enable,
+//                    + point(lightPoint) * lightPoint.enable
+//                    + spot(lightSpot1) * lightSpot1.enable
+//                    + spot(lightSpot2) * lightSpot2.enable,
+                        vec4(0.0), vec4(1.0));
 
     vec4 pixelColor = vec4(texture(texAo, fTexCoords).rgb * outColor.rgb, 1.0);
 
     if (reflectOverride) {
         outColor = vec4(texture(texSkybox,
-                reflect(normalize(fPosition - viewPos),
-                normalize(fNormal))).rgb, 1.0);
+                reflect(normalize(fPosition - viewPos), normal)).rgb, 1.0);
     }
     else if (refractOverride) {
         float alpha = 1.0 / 1.52;
         outColor = vec4(texture(texSkybox,
-                refract(normalize(fPosition - viewPos),
-                normalize(fNormal), alpha)).rgb, 1.0);
+                refract(normalize(fPosition - viewPos), normal, alpha)).rgb, 1.0);
     }
     else {
-        if (pbrEnabled) {
-            outColor = pow(pixelColor, vec4(1.0 / 2.2)) * (1.0 - calculateShadow(calculateMappedNormal()));
-        }
-        else {
-            outColor = pow(pixelColor
-            * pow(texture(texAlbedo, fTexCoords), vec4(2.2)),
-            vec4(1.0 / 2.2));
-        }
+//        if (pbrEnabled) {
+        outColor = pow(pixelColor, vec4(1.0 / 2.2)) * (1.0 - calculateShadow(normal));
+//        }
+//        else {
+//            outColor = pow(pixelColor * pow(texture(texAlbedo, fTexCoords), vec4(2.2)),
+//            vec4(1.0 / 2.2));
+//        }
     }
 }
 

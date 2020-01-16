@@ -12,5 +12,4 @@ newmtl 02___Default
 	Kd 0.588235 0.588235 0.588235
 	Ks 0.000000 0.000000 0.000000
 	Ke 0.000000 0.000000 0.000000
-	map_Ka E:\modelowanie-projekt-2\textures\plastic-1\albedo.tif
-	map_Kd E:\modelowanie-projekt-2\textures\plastic-1\albedo.tif
+	map_Ka res\textures\wood3

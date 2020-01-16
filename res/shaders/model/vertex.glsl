@@ -36,22 +36,24 @@ void createTranslations() {
 // //////////////////////////////////////////////////////////////// Main //
 void main() {
     // If needed, translate instanced objects
-    if (instances > 1) {
-        createTranslations();
-    } else {
-        for (int i = 0; i < 25; ++i) {
-            translations[i] = vec3(0);
-        }
-    }
+//    if (instances > 1) {
+//        createTranslations();
+//    } else {
+//        for (int i = 0; i < 25; ++i) {
+//            translations[i] = vec3(0);
+//        }
+//    }
 
     // Pass variables to geometry shader
-    gPosition = (world * vec4(vPosition + translations[gl_InstanceID], 1.0)).xyz;
+//    gPosition = (world * vec4(vPosition + translations[gl_InstanceID], 1.0)).xyz;
+    gPosition = (world * vec4(vPosition, 1.0)).xyz;
     gPositionLightSpace = (lightSpaceTransform * vec4(gPosition, 1.0)).xyz;
-    gNormal = normalize((world * vec4(vNormal, 1.0)).xyz);
+    gNormal = normalize((/*world * */vec4(vNormal, 1.0)).xyz);
     gTexCoords = vTexCoords;
-    gTangent = normalize((world * vec4(vTangent, 1.0)).xyz);
+    gTangent = normalize((/*world * */vec4(vTangent, 1.0)).xyz);
 
-    gl_Position = transform * vec4(vPosition + translations[gl_InstanceID], 1.0);
+//    gl_Position = transform * vec4(vPosition + translations[gl_InstanceID], 1.0);
+    gl_Position = transform * vec4(vPosition, 1.0);
 }
 
 // ///////////////////////////////////////////////////////////////////// //

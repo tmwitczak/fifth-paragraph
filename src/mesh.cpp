@@ -26,7 +26,7 @@ void Mesh::render(shared_ptr<Shader> shader) const {
     shader->uniform1i("texSkybox", 5);
     shader->uniform1i("texShadow", 6);
 
-    shader->uniform1i("instances", 1);
+//    shader->uniform1i("instances", 1);
 
     for (int i = 0; i < textures.size(); ++i) {
         glActiveTexture(GL_TEXTURE0 + i);
@@ -34,8 +34,8 @@ void Mesh::render(shared_ptr<Shader> shader) const {
     }
 
     glBindVertexArray(vao);
-        glDrawElementsInstanced(GL_TRIANGLES, indices.size(),
-                       GL_UNSIGNED_INT, nullptr, 1);
+//        glDrawElementsInstanced(GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT, nullptr, 1);
+        glDrawElements(GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT, nullptr);
 }
 
 void Mesh::setupMesh() {

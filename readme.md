@@ -10,3 +10,4 @@
     * [glm](https://github.com/g-truc/glm.git) *0.9.9*
     * [imgui](https://github.com/ocornut/imgui.git) *1.74*
     * [stb_image](http://nothings.org/stb) *2.19*
+    * [freetype](https://www.freetype.org/download.html) *2.10.1*
